@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Task 2: Hamming code (table method)
+Задание 2
 """
 
 import sys

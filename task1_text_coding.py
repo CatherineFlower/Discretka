@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Task 1: Text coding & compression (Shannon–Fano, Huffman).
+Задание 1
 """
 
 import math
