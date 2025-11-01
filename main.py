@@ -3,12 +3,12 @@ import sys, subprocess
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-PR6 = BASE / "pr6.py"
+PR6 = BASE / "pr6_build_report.py"
 DM_MAIN = BASE / "dm_main.py"  # ваш скрипт для контрольной по дискретке
 
 MENU = """Выберите задание:
 1 — Контрольная (дискретная математика)  [dm_main.py]
-6 — Практическая 6 (простые + творческое) [pr6.py]
+6 — Практическая 6 (простые + творческое) [pr6_build_report.py]
 q — выход
 > """
 
