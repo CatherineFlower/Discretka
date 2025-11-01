@@ -8,25 +8,30 @@ KEEP_FILES = False # если нужны промежуточные CSV - пос
 DATA_BITS = "1001"      # информационная комбинация для Хэмминга
 MAX_TABLE_ROWS = 30
 
+# --- вверху файла dm_main.py ---
 BASE = Path(__file__).resolve().parent
+DM_OUT = BASE / "out_dm"
+DM_OUT.mkdir(parents=True, exist_ok=True)
+
 FILE_TASK1 = BASE / "task1_text_coding.py"
 FILE_TASK2 = BASE / "task2_hamming.py"
-FILE_INPUT = BASE / "input_text.txt"
+FILE_INPUT = BASE / "input_text.txt"   # абсолютный путь передаём как есть
 
-A1 = BASE / "alphabet_1gram.csv"
-A2 = BASE / "alphabet_2gram.csv"
-C1_SF = BASE / "code_1gram_shannon_fano.csv"
-C1_HF = BASE / "code_1gram_huffman.csv"
-C2_SF = BASE / "code_2gram_shannon_fano.csv"
-C2_HF = BASE / "code_2gram_huffman.csv"
-ENC_SF = BASE / "encoded_1gram_shannon_fano.txt"
-DEC_SF = BASE / "decoded_1gram_shannon_fano.txt"
-ENC_HF = BASE / "encoded_1gram_huffman.txt"
-DEC_HF = BASE / "decoded_1gram_huffman.txt"
-HAMMING = BASE / "hamming_codeword.txt"
+# артефакты теперь в out_dm/
+A1 = DM_OUT / "alphabet_1gram.csv"
+A2 = DM_OUT / "alphabet_2gram.csv"
+C1_SF = DM_OUT / "code_1gram_shannon_fano.csv"
+C1_HF = DM_OUT / "code_1gram_huffman.csv"
+C2_SF = DM_OUT / "code_2gram_shannon_fano.csv"
+C2_HF = DM_OUT / "code_2gram_huffman.csv"
+ENC_SF = DM_OUT / "encoded_1gram_shannon_fano.txt"
+DEC_SF = DM_OUT / "decoded_1gram_shannon_fano.txt"
+ENC_HF = DM_OUT / "encoded_1gram_huffman.txt"
+DEC_HF = DM_OUT / "decoded_1gram_huffman.txt"
+HAMMING = DM_OUT / "hamming_codeword.txt"
 
-REPORT_MD = BASE / "report_discrete_dm.md"
-REPORT_IPYNB = BASE / "report_discrete_dm.ipynb"
+REPORT_MD = DM_OUT / "report_discrete_dm.md"
+REPORT_IPYNB = DM_OUT / "report_discrete_dm.ipynb"
 
 def ensure_exists(p: Path, hint: str):
     if not p.exists():
@@ -121,8 +126,9 @@ def run_task1():
     ensure_exists(FILE_TASK1, "Положи task1_text_coding.py рядом с dm_main.py")
     ensure_exists(FILE_INPUT, "Положи input_text.txt рядом с dm_main.py")
     proc = subprocess.run(
-        [sys.executable, str(FILE_TASK1), str(FILE_INPUT)],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        [sys.executable, str(FILE_TASK1), str(FILE_INPUT)],  # передаём абсолютный путь файла ввода
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        cwd=str(DM_OUT)
     )
     print("\n=== Задание 1: stdout ===")
     if proc.stdout: print(proc.stdout.rstrip("\n"))
@@ -135,7 +141,8 @@ def run_task2(data_bits: str):
     ensure_exists(FILE_TASK2, "Положи task2_hamming.py рядом с dm_main.py")
     proc = subprocess.Popen(
         [sys.executable, str(FILE_TASK2)],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        cwd=str(DM_OUT)
     )
     out, err = proc.communicate(data_bits + "\n")
     print("\n=== Задание 2: stdout ===")
