@@ -1,0 +1,5 @@
+{
+  "method": "caesar",
+  "shift": 9,
+  "alphabet_len": 97
+}
