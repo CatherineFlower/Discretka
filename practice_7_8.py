@@ -185,6 +185,23 @@ def write_text(path: str, text: str):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
+
+def read_json_if_exists(path: str):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def read_json_from_out_or_root(name: str):
+    p1 = to_outpath(name)
+    data = read_json_if_exists(p1)
+    if data is not None:
+        return data
+    return read_json_if_exists(name)
+
+
 # -----------------------------
 # Математика для аффинного шифра
 # -----------------------------
@@ -201,31 +218,55 @@ def modinv(a: int, m: int) -> int:
         raise ValueError(f"Не существует обратного к a={a} по модулю M={m} (gcd={g})")
     return x % m
 
+
+# --- Автоподбор валидного 'a' для аффинного шифра ---
+AFFINE_LAST_A_EFF = None  # запоминаем последнее фактически применённое a
+
+def pick_affine_a(a: int) -> int:
+    """Подбирает ближайший допустимый коэффициент a (gcd(a, M) == 1)."""
+    if M <= 1:
+        return 1
+    a0 = a % M or 1
+    if math.gcd(a0, M) == 1:
+        return a0
+    # ищем ближайший сверху
+    for delta in range(1, M):
+        cand = (a0 + delta) % M or 1
+        if math.gcd(cand, M) == 1:
+            return cand
+    return 1
+
 # -----------------------------
 # П7 — Аффинный (простой) и Гронсфельд (сложный)
 # -----------------------------
 
 def p7_affine_encrypt(text: str, a: int, b: int) -> str:
+    global AFFINE_LAST_A_EFF
     if M == 0:
         raise ValueError("Алфавит пуст.")
-    if math.gcd(a, M) != 1:
-        raise ValueError(f"a={a} не взаимно просто с |ALPH|={M}")
+    a_eff = pick_affine_a(a)
+    AFFINE_LAST_A_EFF = a_eff
+    if a_eff != a:
+        print(f"[Affine] a={a} не взаимно просто с M={M} -> использую a_eff={a_eff}")
     out = []
     for ch in text:
         if ch in INDEX:
             x = INDEX[ch]
-            y = (a * x + b) % M
+            y = (a_eff * x + b) % M
             out.append(ALPH[y])
         else:
             out.append(ch)
     return "".join(out)
 
 def p7_affine_decrypt(text: str, a: int, b: int) -> str:
+    global AFFINE_LAST_A_EFF
     if M == 0:
         raise ValueError("Алфавит пуст.")
-    if math.gcd(a, M) != 1:
-        raise ValueError(f"a={a} не взаимно просто с |ALPH|={M}")
-    a_inv = modinv(a, M)
+    a_eff = pick_affine_a(a)
+    AFFINE_LAST_A_EFF = a_eff
+    if a_eff != a:
+        print(f"[Affine] a={a} не взаимно просто с M={M} -> использую a_eff={a_eff}")
+    a_inv = modinv(a_eff, M)
     out = []
     for ch in text:
         if ch in INDEX:
@@ -235,6 +276,7 @@ def p7_affine_decrypt(text: str, a: int, b: int) -> str:
         else:
             out.append(ch)
     return "".join(out)
+
 
 DIGITS = "0123456789"
 
@@ -278,29 +320,52 @@ def p7_gronsfeld_decrypt(text: str, key: str) -> str:
     return "".join(out)
 
 def affine_steps_table(plain: str, a: int, b: int, limit: int = 40) -> str:
+    # используем валидный коэффициент
+    a_eff = pick_affine_a(a)
     rows = []
     for i, ch in enumerate(plain[:limit]):
         if ch in INDEX:
             x = INDEX[ch]
-            y = (a * x + b) % M
+            y = (a_eff * x + b) % M
             ce = ALPH[y]
-            rows.append([i, repr(ch)[1:-1], x, f"(a*x+b)%M=({a}*{x}+{b})%{M}={y}", repr(ce)[1:-1]])
+            rows.append([
+                i,
+                repr(ch)[1:-1],
+                x,
+                f"(a_eff*x+b)%M=({a_eff}*{x}+{b})%{M}={y}",
+                repr(ce)[1:-1]
+            ])
         else:
             rows.append([i, repr(ch)[1:-1], "-", "-", repr(ch)[1:-1]])
-    return md_table(["i", "ch", "x", "формула → y", "enc"], rows)
+    # добавим маленькую подпись о реально применённом a
+    table = md_table(["i", "ch", "x", "формула → y", "enc"], rows)
+    table += f"\n_Применён a_eff = {a_eff} (исходный a = {a})._\n"
+    return table
+
 
 def affine_back_steps_table(cipher: str, a: int, b: int, limit: int = 40) -> str:
-    a_inv = modinv(a, M)
+    # используем тот же валидный коэффициент, что и при шифровании
+    a_eff = pick_affine_a(a)
+    a_inv = modinv(a_eff, M)
     rows = []
     for i, ch in enumerate(cipher[:limit]):
         if ch in INDEX:
             y = INDEX[ch]
             x = (a_inv * (y - b)) % M
             pl = ALPH[x]
-            rows.append([i, repr(ch)[1:-1], y, f"x=a^(-1)*(y-b)%M={a_inv}*({y}-{b})%{M}={x}", repr(pl)[1:-1]])
+            rows.append([
+                i,
+                repr(ch)[1:-1],
+                y,
+                f"x=a_eff^(-1)*(y-b)%M={a_inv}*({y}-{b})%{M}={x}",
+                repr(pl)[1:-1]
+            ])
         else:
             rows.append([i, repr(ch)[1:-1], "-", "-", repr(ch)[1:-1]])
-    return md_table(["i", "ch", "y", "формула → x", "dec"], rows)
+    table = md_table(["i", "ch", "y", "формула → x", "dec"], rows)
+    table += f"\n_Применён a_eff = {a_eff} (исходный a = {a})._\n"
+    return table
+
 
 def gronsfeld_steps_table(plain: str, key: str, limit: int = 40) -> str:
     ks = _digits_from_key(key); klen = len(ks)
@@ -515,24 +580,45 @@ def cmd_p7_affine_encrypt(args):
     text = read_text(args.input)
     if not args.no_lower:
         text = text.lower()
-    enc = p7_affine_encrypt(text, args.a, args.b)
+    a_eff = pick_affine_a(args.a)
+    enc = p7_affine_encrypt(text, a_eff, args.b)
     outp = to_outpath(args.output)
     write_text(outp, enc)
-    meta = {"method": "affine", "a": args.a, "b": args.b, "alphabet_len": M}
+    meta = {
+        "method": "affine",
+        "a_requested": args.a,
+        "a_effective": a_eff,
+        "b": args.b,
+        "alphabet_len": M
+    }
     write_text(to_outpath(args.output + ".meta.json"), json.dumps(meta, ensure_ascii=False, indent=2))
-    print(f"[P7][Affine] encrypt a={args.a} b={args.b} -> {outp}")
+    msg = f"[P7][Affine] encrypt a_req={args.a} -> a_eff={a_eff} b={args.b} -> {outp}"
+    if a_eff != args.a:
+        msg += "  (внимание: a скорректирован для gcd(a, M)=1)"
+    print(msg)
 
 def cmd_p7_affine_decrypt(args):
     load_profile_and_set_alphabet(args.profile)
     text = read_text(args.input)
     if not args.no_lower:
         text = text.lower()
-    dec = p7_affine_decrypt(text, args.a, args.b)
+    a_eff = pick_affine_a(args.a)
+    dec = p7_affine_decrypt(text, a_eff, args.b)
     outp = to_outpath(args.output)
     write_text(outp, dec)
-    meta = {"method": "affine-decode", "a": args.a, "b": args.b, "alphabet_len": M}
+    meta = {
+        "method": "affine-decode",
+        "a_requested": args.a,
+        "a_effective": a_eff,
+        "b": args.b,
+        "alphabet_len": M
+    }
     write_text(to_outpath(args.output + ".meta.json"), json.dumps(meta, ensure_ascii=False, indent=2))
-    print(f"[P7][Affine] decrypt a={args.a} b={args.b} -> {outp}")
+    msg = f"[P7][Affine] decrypt a_req={args.a} -> a_eff={a_eff} b={args.b} -> {outp}"
+    if a_eff != args.a:
+        msg += "  (внимание: a скорректирован для gcd(a, M)=1)"
+    print(msg)
+
 
 def cmd_p7_gronsfeld_encrypt(args):
     load_profile_and_set_alphabet(args.profile)
@@ -563,17 +649,12 @@ def cmd_p7_gronsfeld_decrypt(args):
 # -----------------------------
 
 def md_table(headers: List[str], rows: List[List[str]]) -> str:
-    """
-    Простейшая Markdown-таблица:
-    headers = ["колонка1", "колонка2"]
-    rows = [["a","1"], ["b","2"]]
-    """
-    line_head = "| " + " | ".join(headers) + " |"
-    line_sep  = "| " + " | ".join(["---"] * len(headers)) + " |"
-    lines = [line_head, line_sep]
-    for r in rows:
-        lines.append("| " + " | ".join(str(x) for x in r) + " |")
-    return "\n".join(lines)
+    head = "| " + " | ".join(headers) + " |"
+    sep  = "| " + " | ".join(["---"] * len(headers)) + " |"
+    body = ["| " + " | ".join(str(x) for x in r) + " |" for r in rows]
+    # пустая строка до и после — нужно для некоторых Markdown-рендереров
+    return "\n" + "\n".join([head, sep, *body]) + "\n"
+
 
 
 def profile_top_md_table(profile: Dict[str, float], limit: int = 50) -> str:
@@ -601,7 +682,7 @@ def attack_top_md_table(cipher: str, profile: Dict[str, float], topk: int = 10) 
 
 def fence(code: str) -> str:
     # Без f-строк, чтобы не ловить конфликтов с { } и ```
-    return "```\n" + str(code) + "\n```"
+    return "~~~\n" + str(code) + "\n~~~"
 
 def _profile_top_lines(profile: Dict[str, float], limit: int = 50) -> str:
     rows = sorted(profile.items(), key=lambda kv: kv[1], reverse=True)[:limit]
@@ -654,6 +735,18 @@ def cmd_report(args):
     caesar_cipher  = read_from_out_or_root(args.cipher)
     caesar_decoded = read_from_out_or_root(args.decoded)
 
+    # метаданные (чтобы знать точный shift)
+    cipher_meta = read_json_from_out_or_root(args.cipher + ".meta.json") or {}
+    decoded_meta = read_json_from_out_or_root(args.decoded + ".meta.json") or {}
+
+    cipher_shift_used = None
+    if isinstance(cipher_meta, dict) and "shift" in cipher_meta:
+        cipher_shift_used = int(cipher_meta["shift"]) % (M or 1)
+
+    best_shift_found = None
+    if isinstance(decoded_meta, dict) and "best_shift" in decoded_meta:
+        best_shift_found = int(decoded_meta["best_shift"]) % (M or 1)
+
     # === П7: аффинный / Гронсфельд (полные тексты + промежуточные шаги) ===
     aff_enc = p7_affine_encrypt(message, args.a, args.b) if (message and profile_ok) else ""
     aff_dec = p7_affine_decrypt(aff_enc, args.a, args.b) if aff_enc else ""
@@ -682,16 +775,10 @@ def cmd_report(args):
     md.append("```\n" + preview + "\n```\n")
     md.append("\n---\n\n")
 
-    md.append("## Профиль частот (срез)\n")
-    if profile_ok:
-        md.append("Полная таблица в файле: `profile_table.csv`.\n\n")
-        md.append(profile_top_md_table(profile, 50) + "\n")
-    else:
-        md.append(f"Не удалось загрузить профиль: {profile_err}\n")
-
     md.append("\n---\n\n")
     md.append("## Практическая 7 — параметры\n")
-    md.append(f"- Аффинный: `a = {args.a}`, `b = {args.b}`\n")
+    a_eff_report = pick_affine_a(args.a)
+    md.append(f"- Аффинный: `a = {args.a}` (фактически `a_eff = {a_eff_report}`), `b = {args.b}`\n")
     md.append(f"- Гронсфельд: `key = {args.key}`\n")
 
     if message:
@@ -722,16 +809,32 @@ def cmd_report(args):
 
     md.append("\n---\n\n")
     md.append("## Практическая 8 — частотный анализ Цезаря\n")
+    # Профиль показываем здесь, т.к. он используется именно для Цезаря
+    md.append("### Профиль частот корпуса (срез)\n")
+    if profile_ok:
+        md.append("Полная таблица: `profile_table.csv`.\n\n")
+        md.append(profile_top_md_table(profile, 50) + "\n")
+    else:
+        md.append(f"Не удалось загрузить профиль: {profile_err}\n")
+    if cipher_shift_used is not None:
+        md.append(f"**Цезарь — параметр шифрования:** shift = {cipher_shift_used}\n\n")
     if corpus:
         md.append("**Корпус (полностью):**\n```\n" + corpus + "\n```\n")
     if caesar_cipher:
         md.append("\n**Цезарь — шифртекст (полностью):**\n```\n" + caesar_cipher + "\n```\n")
-    if caesar_decoded:
-        md.append("\n**Цезарь — расшифровка (лучший сдвиг, полностью):**\n```\n" + caesar_decoded + "\n```\n")
     if attack_table_md:
-        md.append("\n**Подбор сдвига (χ², ТОП-10):**\n")
+        # если мета у decoded известна — покажем её; иначе возьмём из χ² TOP-1
+        best_k = best_shift_found if (best_shift_found is not None) else top_scores[0][0]
+        md.append(f"\n**Лучший сдвиг по χ²: k = {best_k} (|ALPH| = {M})**\n\n")
+        md.append("**Подбор сдвига (χ², ТОП-10):**\n")
         md.append(attack_table_md + "\n")
-        md.append(f"\nЛучший сдвиг по χ²: **k = {top_scores[0][0]}**.\n")
+
+    if caesar_decoded:
+        # продублируем, какой именно сдвиг использован для итоговой расшифровки
+        if (best_shift_found is not None) or attack_table_md:
+            k_used = best_shift_found if (best_shift_found is not None) else top_scores[0][0]
+            md.append(f"\n**Использован сдвиг при расшифровке:** k = {k_used}\n")
+        md.append("\n**Цезарь — расшифровка (полностью):**\n```\n" + caesar_decoded + "\n```\n")
 
     md.append("\n---\n\n")
     md.append("## Выводы\n")
@@ -741,6 +844,9 @@ def cmd_report(args):
 
     outp = to_outpath(args.out)
     write_text(outp, "".join(md))
+    if hasattr(args, "ipynb_out") and args.ipynb_out:
+        nb = md_to_ipynb("".join(md))
+        save_ipynb(nb, args.ipynb_out)
     print(f"[REPORT] Markdown-отчёт сохранён в {outp}")
 
 
@@ -940,6 +1046,7 @@ def main():
     if not getattr(args, "cmd", None):
         print("[Info] Команда не указана — выполняю сценарий по умолчанию (quickstart).")
         quickstart()
+        print(f"[Quickstart] affine a_eff used = {AFFINE_LAST_A_EFF}")
         return
 
     args.func(args)
